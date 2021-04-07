@@ -26,13 +26,18 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/tkanos/gonfig"
 )
 
 func main() {
+
+	log.SetOutput(ioutil.Discard)
 
 	//Configuration Data
 	type Configuration struct {
@@ -47,6 +52,11 @@ func main() {
 
 	args := os.Args
 
+	if len(args) < 2 {
+		fmt.Println("Wrong arguments. Run '", args[0], " help' on how to execute.")
+		os.Exit(1)
+	}
+
 	if len(args) != 4 && args[1] != "unsubscribe" {
 		fmt.Println("Wrong arguments. Usage:")
 		fmt.Println(args[0] + " unsubscribe <subscriber name> <topic>")
@@ -54,47 +64,59 @@ func main() {
 
 	}
 
-	// Read the configuration file using gonfig package
-	configuration = Configuration{}
-	err := gonfig.GetConf("config.json", &configuration)
+	if args[1] == "help" {
 
-	if err != nil {
-		fmt.Println("Error reading configuration file: " + err.Error())
-		fmt.Println("Exiting now.")
-		os.Exit(1)
+		fmt.Println()
+		fmt.Println("		unsubscribe - Unsubscribe consumers from a topic")
+		fmt.Println("		subscribe - Create a subscriber for a topic - without consuming messages")
 
 	}
 
-	// Pulsar Operation - Unsubscribe
+	if args[1] == "unsubscribe" {
 
-	auth := pulsar.NewAuthenticationToken(configuration.PulsarAuthenticationKey)
+		// Read the configuration file using gonfig package
+		configuration = Configuration{}
+		err := gonfig.GetConf("config.json", &configuration)
 
-	client, err := pulsar.NewClient(pulsar.ClientOptions{URL: configuration.PulsarURL, Authentication: auth})
+		if err != nil {
+			fmt.Println("Error reading configuration file: " + err.Error())
+			fmt.Println("Exiting now.")
+			os.Exit(1)
 
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		}
+
+		// Pulsar Operation - Unsubscribe
+
+		auth := pulsar.NewAuthenticationToken(configuration.PulsarAuthenticationKey)
+
+		client, err := pulsar.NewClient(pulsar.ClientOptions{URL: configuration.PulsarURL, Authentication: auth})
+
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+			Topic:            args[3],
+			SubscriptionName: args[2],
+			Type:             pulsar.Shared,
+		})
+
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		defer consumer.Close()
+
+		if err := consumer.Unsubscribe(); err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println("Subscriber removed successfully.")
+		}
+
+		// Close client when ending
+		client.Close()
+
 	}
-
-	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-		Topic:            args[3],
-		SubscriptionName: args[2],
-		Type:             pulsar.Shared,
-	})
-
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer consumer.Close()
-
-	if err := consumer.Unsubscribe(); err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println("Subscriber removed successfully.")
-	}
-
-	// Close client when ending
-	client.Close()
 
 }
